@@ -8,13 +8,6 @@ from telethon import TelegramClient, events
 from config import *
 from sql_queries import *
 
-# TQDM
-try:
-    from tqdm import tqdm
-except Exception:
-    tqdm = None
-USE_TQDM = False
-
 
 client = TelegramClient(SESSION_NAME, API_ID, API_HASH)
 
@@ -74,14 +67,9 @@ async def process_history(pool: asyncpg.Pool) -> int:
     """
     total_counter = 0
     async with pool.acquire() as conn:
-        async with client:
-            use_tqdm = globals().get("USE_TQDM", False)
-            use_tqdm_available = use_tqdm and (tqdm is not None)
-            progress_bar = None
-            if use_tqdm_available and tqdm is not None:
-                progress_bar = tqdm(unit="msg", dynamic_ncols=True)
+        progress_every = 100
 
-            for group in GROUPS:
+        for group in GROUPS:
                 if group is None:
                     continue
 
@@ -153,6 +141,7 @@ async def process_history(pool: asyncpg.Pool) -> int:
                         row = await conn.fetchrow("SELECT max(message_id) AS last_id FROM messages WHERE chat_id=$1", chat_id)
                         if row:
                             saved_last_id = row.get("last_id")
+                            print(f"Last saved message id for chat_id {chat_id} is {saved_last_id}")
                     except Exception as e:
                         print(f"Failed to query DB for last message id: {e}")
 
@@ -169,35 +158,48 @@ async def process_history(pool: asyncpg.Pool) -> int:
                 counter = 0
                 progress_every = 100
 
+                # Use explicit parameters for iter_messages to avoid type-stub confusion
                 try:
-                    async for msg in client.iter_messages(entity, reverse=True):
-                        # skip already saved messages if DB indicates so (best-effort)
-                        if saved_last_id and getattr(msg, "id", None) is not None and msg.id <= saved_last_id:
-                            continue
+                    if saved_last_id:
+                        # min_id returns messages with id > min_id, so this skips already-saved messages.
+                        async for msg in client.iter_messages(entity, reverse=True, min_id=saved_last_id):
+                            
+                            # skip already saved messages if DB indicates so (best-effort)
+                            if getattr(msg, "id", None) is not None and msg.id <= saved_last_id:
+                                continue
 
-                        sender = await msg.get_sender()
-                        sender_uuid = await get_user_uuid(conn, sender)
-                        if sender_uuid:
-                            await save_message(conn, msg, sender_uuid)
+                            sender = await msg.get_sender()
+                            sender_uuid = await get_user_uuid(conn, sender)
+                            if sender_uuid:
+                                await save_message(conn, msg, sender_uuid)
 
-                        counter += 1
-                        total_counter += 1
+                            counter += 1
+                            total_counter += 1
 
-                        if progress_bar is not None:
-                            progress_bar.update(1)
-                        else:
+                            # Print progress periodically (every `progress_every` messages)
+                            if counter % progress_every == 0:
+                                last_dt = msg.date.isoformat() if getattr(msg, "date", None) else "unknown"
+                                print(f"Processed {counter} messages for {group} (last id={msg.id}, date={last_dt})")
+                    else:
+                        async for msg in client.iter_messages(entity, reverse=True):
+                            # skip already saved messages if DB indicates so (best-effort)
+                            if saved_last_id and getattr(msg, "id", None) is not None and msg.id <= saved_last_id:
+                                continue
+
+                            sender = await msg.get_sender()
+                            sender_uuid = await get_user_uuid(conn, sender)
+                            if sender_uuid:
+                                await save_message(conn, msg, sender_uuid)
+
+                            counter += 1
+                            total_counter += 1
+
+                            # Print progress periodically (every `progress_every` messages)
                             if counter % progress_every == 0:
                                 last_dt = msg.date.isoformat() if getattr(msg, "date", None) else "unknown"
                                 print(f"Processed {counter} messages for {group} (last id={msg.id}, date={last_dt})")
                 finally:
-                    if progress_bar is not None:
-                        # don't close here if more groups remain; only close at end
-                        pass
-
-                print(f"Finished processing history for {group}. New messages processed: {counter}")
-
-            if progress_bar is not None:
-                progress_bar.close()
+                    print(f"Finished processing history for {group}. New messages processed: {counter}")
 
     print(f"Finished full history sync. Total new messages processed across groups: {total_counter}")
     return total_counter
@@ -222,6 +224,7 @@ async def main():
         await conn.execute(SQL_CREATE)
 
     print("✅ Таблицы готовы, синхронизация истории...")
+    await client.start()
     new_messages = await process_history(db_pool)
 
     # If no new messages were processed, exit instead of waiting for new messages.
@@ -243,8 +246,5 @@ async def main():
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser(description="TG group history sync")
-    ap.add_argument("--tqdm", action="store_true", help="Show terminal progress using tqdm (if installed)")
-    ns = ap.parse_args()
-    USE_TQDM = ns.tqdm
     # Run main
     asyncio.run(main())
