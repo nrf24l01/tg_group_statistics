@@ -36,7 +36,7 @@ async def get_user_uuid(conn: asyncpg.Connection, sender) -> uuid.UUID | None:
         nick = getattr(sender, "title", None)
 
     row = await conn.fetchrow(SQL_UPSERT_USER, tg_user_id, username, nick)
-    user_uuid = row["uuid"]
+    user_uuid = row["id"]
     user_cache[tg_user_id] = user_uuid
     return user_uuid
 
@@ -220,19 +220,17 @@ async def new_message_handler(event):
 async def main():
     global db_pool
     db_pool = await asyncpg.create_pool(DATABASE_URL, min_size=1, max_size=5)
-    async with db_pool.acquire() as conn:
-        await conn.execute(SQL_CREATE)
 
-    print("✅ Таблицы готовы, синхронизация истории...")
+    print("Синхронизация истории...")
     await client.start()
     new_messages = await process_history(db_pool)
 
     # If no new messages were processed, exit instead of waiting for new messages.
     if isinstance(new_messages, int) and new_messages == 0:
-        print("✅ История синхронизирована. Новых сообщений не найдено — завершаемся.")
+        print("История синхронизирована. Новых сообщений не найдено — завершаемся.")
         return
 
-    print("✅ История синхронизирована. Ожидание новых сообщений...")
+    print("История синхронизирована. Ожидание новых сообщений...")
     # Register real-time handler(s) for configured groups
     if GROUPS:
         try:
