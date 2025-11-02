@@ -4,6 +4,7 @@ import (
 	"github.com/nrf24l01/tg_group_statistics/backend/core"
 	"github.com/nrf24l01/tg_group_statistics/backend/handlers"
 	"github.com/nrf24l01/tg_group_statistics/backend/routes"
+	bckValidate "github.com/nrf24l01/tg_group_statistics/backend/validate"
 
 	"github.com/go-playground/validator/v10"
 
@@ -48,6 +49,7 @@ func main() {
 	if err := echokitValidators.RegisterFileValidations(v); err != nil {
 		log.Fatalf("failed to register file validations: %v", err)
 	}
+	bckValidate.RegisterChatIdAllowedValidator(v, config.TGGroupStatsConfig)
 	e.Validator = &echokitMw.CustomValidator{Validator: v}
 
 	// Logs

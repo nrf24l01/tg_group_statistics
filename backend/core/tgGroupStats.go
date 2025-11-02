@@ -8,7 +8,7 @@ import (
 
 type TGGroupStatsConfig struct {
 	AccessTokenSecret  string  `env:"ACCESS_TOKEN_SECRET" envDefault:"default_secret"`
-	ChatID 		       int64   `env:"CHAT_ID" envDefault:"0"`
+	AllowedChatIDs     []int64 `env:"CHAT_ID" envDefault:"0"`
 }
 
 func LoadTGGroupStatsConfigFromEnv() *TGGroupStatsConfig {

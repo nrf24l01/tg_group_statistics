@@ -7,4 +7,5 @@ import (
 
 func RegisterRoutes(e *echo.Echo, h *handlers.Handler) {
 	RegisterUserMessageRoutes(e, h)
+	RegisterConfigRoutes(e, h)
 }
