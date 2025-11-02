@@ -73,7 +73,7 @@ func resolveGroupUUID(db *gorm.DB, groupID string) (uuid.UUID, error) {
 
 func getUserGroupPairs(db *gorm.DB) ([]UserGroupPair, error) {
 	var pairs []UserGroupPair
-	rows, err := db.Raw("SELECT DISTINCT sender_id::text AS user_id, chat_id::text AS group_id FROM messages").Rows()
+	rows, err := db.Raw("SELECT DISTINCT sender_id AS user_id, chat_id AS group_id FROM messages").Rows()
 	if err != nil {
 		return nil, err
 	}
@@ -94,7 +94,7 @@ func getUserGroupPairs(db *gorm.DB) ([]UserGroupPair, error) {
 func getDaysPerGroup(db *gorm.DB) (map[string][]string, error) {
 	days := make(map[string][]string)
 
-	rows, err := db.Raw("SELECT DISTINCT chat_id::text AS group_id, (send_time AT TIME ZONE 'UTC')::date AS date FROM messages ORDER BY group_id, date").Rows()
+	rows, err := db.Raw("SELECT DISTINCT chat_id AS group_id, (send_time AT TIME ZONE 'UTC')::date AS date FROM messages ORDER BY group_id, date").Rows()
 	if err != nil {
 		return nil, err
 	}
@@ -121,7 +121,11 @@ func calculateUserStatsPerGroup(db *gorm.DB, userID string, groupID string, date
 
 	// resolve groupID: messages.store chat IDs as int64 (Telegram IDs). Try parse int64 and lookup Group.
 	var groupUUID uuid.UUID
-	if tgID, err := strconv.ParseInt(groupID, 10, 64); err == nil {
+	var tgID int64
+	var hasTgID bool
+	if parsed, err := strconv.ParseInt(groupID, 10, 64); err == nil {
+		tgID = parsed
+		hasTgID = true
 		var grp postgres.Group
 		if err := db.Where("tg_group_id = ?", tgID).First(&grp).Error; err != nil {
 			if err == gorm.ErrRecordNotFound {
@@ -173,11 +177,12 @@ func calculateUserStatsPerGroup(db *gorm.DB, userID string, groupID string, date
 	placeholders := strings.Repeat("?,", len(dateKeys))
 	placeholders = placeholders[:len(placeholders)-1]
 	args := make([]interface{}, 0, 2+len(dateKeys))
-	args = append(args, userID, groupID)
+	// use typed UUIDs to allow index usage
+	args = append(args, senderUUID, groupUUID)
 	for _, k := range dateKeys {
 		args = append(args, k)
 	}
-	existQuery := fmt.Sprintf("SELECT date FROM users_stats WHERE sender_id::text = ? AND group_id::text = ? AND date IN (%s)", placeholders)
+	existQuery := fmt.Sprintf("SELECT date FROM users_stats WHERE sender_id = ? AND group_id = ? AND date IN (%s)", placeholders)
 	existRows, err := db.Raw(existQuery, args...).Rows()
 	if err != nil {
 		return err
@@ -206,18 +211,34 @@ func calculateUserStatsPerGroup(db *gorm.DB, userID string, groupID string, date
 		return nil
 	}
 
-	// Query messages counts restricted to remainingKeys
-	placeholders = strings.Repeat("?,", len(remainingKeys))
-	placeholders = placeholders[:len(placeholders)-1]
-	args = make([]interface{}, 0, 2+len(remainingKeys))
-	args = append(args, userID, groupID)
-	for _, k := range remainingKeys {
-		args = append(args, k)
+	// Query messages counts restricted to remainingKeys.
+	// Use a time range [start, end) instead of casting send_time to date in WHERE
+	// so Postgres/Timescale can use indexes and chunk pruning.
+	// remainingKeys are dates in YYYY-MM-DD format; compute min/max.
+	var minDate, maxDate time.Time
+	for i, k := range remainingKeys {
+		d, err := time.Parse("2006-01-02", k)
+		if err != nil {
+			continue
+		}
+		if i == 0 || d.Before(minDate) {
+			minDate = d
+		}
+		if i == 0 || d.After(maxDate) {
+			maxDate = d
+		}
 	}
-	query := fmt.Sprintf(
-		"SELECT (send_time AT TIME ZONE 'UTC')::date AS date, COUNT(*) AS cnt FROM messages WHERE sender_id::text = ? AND chat_id::text = ? AND (send_time AT TIME ZONE 'UTC')::date IN (%s) GROUP BY date",
-		placeholders,
-	)
+	// start is minDate 00:00 UTC, end is (maxDate + 1 day) 00:00 UTC
+	start := time.Date(minDate.Year(), minDate.Month(), minDate.Day(), 0, 0, 0, 0, time.UTC)
+	end := start.AddDate(0, 0, int(maxDate.Sub(minDate).Hours()/24)+1)
+
+	args = make([]interface{}, 0, 4)
+	if hasTgID {
+		args = append(args, senderUUID, tgID, start, end)
+	} else {
+		args = append(args, senderUUID, groupUUID, start, end)
+	}
+	query := "SELECT (send_time AT TIME ZONE 'UTC')::date AS date, COUNT(*) AS cnt FROM messages WHERE sender_id = ? AND chat_id = ? AND send_time >= ? AND send_time < ? GROUP BY date"
 	rows, err := db.Raw(query, args...).Rows()
 	if err != nil {
 		return err
@@ -279,7 +300,7 @@ func update(db *gorm.DB, config *core.Config) {
 	}
 	
 	// Run calculations concurrently with a semaphore to limit parallel DB work.
-	const maxWorkers = 2
+	const maxWorkers = 8
 	semaphore := make(chan struct{}, maxWorkers)
 	var wg sync.WaitGroup
 
@@ -306,8 +327,15 @@ func update(db *gorm.DB, config *core.Config) {
 				return
 			}
 
+			// Parse sender UUID so we can compare typed UUIDs (avoid ::text)
+			senderUUID, err := uuid.Parse(p.UserID)
+			if err != nil {
+				log.Printf("invalid sender uuid %s: %v", p.UserID, err)
+				return
+			}
+
 			var existCount int64
-			if err := db.Raw("SELECT COUNT(*) FROM users_stats WHERE sender_id::text = ? AND group_id::text = ?", p.UserID, resolvedGroupUUID.String()).Scan(&existCount).Error; err != nil {
+			if err := db.Raw("SELECT COUNT(*) FROM users_stats WHERE sender_id = ? AND group_id = ?", senderUUID, resolvedGroupUUID).Scan(&existCount).Error; err != nil {
 				log.Printf("failed to check existing stats for user %s group %s: %v", p.UserID, p.GroupID, err)
 				return
 			}
@@ -362,7 +390,7 @@ func update(db *gorm.DB, config *core.Config) {
 			log.Printf("failed to resolve group id %s: %v", groupID, err)
 			continue
 		}
-		if err := db.Raw("SELECT COUNT(*) FROM groups_stats WHERE group_id::text = ?", resolvedGroupUUID.String()).Scan(&existCount).Error; err != nil {
+		if err := db.Raw("SELECT COUNT(*) FROM groups_stats WHERE group_id = ?", resolvedGroupUUID).Scan(&existCount).Error; err != nil {
 			log.Printf("failed to check existing group stats for group %s: %v", groupID, err)
 			continue
 		}
@@ -421,7 +449,11 @@ func update(db *gorm.DB, config *core.Config) {
 func calculateGroupStatsPerGroup(db *gorm.DB, groupID string, dates []string) error {
 	// resolve groupID: messages.store chat IDs as int64 (Telegram IDs). Try parse int64 and lookup Group.
 	var groupUUID uuid.UUID
-	if tgID, err := strconv.ParseInt(groupID, 10, 64); err == nil {
+	var tgID int64
+	var hasTgID bool
+	if parsed, err := strconv.ParseInt(groupID, 10, 64); err == nil {
+		tgID = parsed
+		hasTgID = true
 		var grp postgres.Group
 		if err := db.Where("tg_group_id = ?", tgID).First(&grp).Error; err != nil {
 			if err == gorm.ErrRecordNotFound {
@@ -472,11 +504,12 @@ func calculateGroupStatsPerGroup(db *gorm.DB, groupID string, dates []string) er
 	placeholders := strings.Repeat("?,", len(dateKeys))
 	placeholders = placeholders[:len(placeholders)-1]
 	args := make([]interface{}, 0, 1+len(dateKeys))
-	args = append(args, groupID)
+	// compare typed UUID to group_id to allow index usage
+	args = append(args, groupUUID)
 	for _, k := range dateKeys {
 		args = append(args, k)
 	}
-	existQuery := fmt.Sprintf("SELECT date FROM groups_stats WHERE group_id::text = ? AND date IN (%s)", placeholders)
+	existQuery := fmt.Sprintf("SELECT date FROM groups_stats WHERE group_id = ? AND date IN (%s)", placeholders)
 	existRows, err := db.Raw(existQuery, args...).Rows()
 	if err != nil {
 		return err
@@ -504,19 +537,31 @@ func calculateGroupStatsPerGroup(db *gorm.DB, groupID string, dates []string) er
 		return nil
 	}
 
-	// Query messages counts restricted to remainingKeys
-	placeholders = strings.Repeat("?,", len(remainingKeys))
-	placeholders = placeholders[:len(placeholders)-1]
-	args = make([]interface{}, 0, 1+len(remainingKeys))
-	// messages.chat_id is stored as int64; compare as text since groupID is textual representation
-	args = append(args, groupID)
-	for _, k := range remainingKeys {
-		args = append(args, k)
+	// Query messages counts restricted to remainingKeys using a time range so
+	// Timescale/Postgres can use indexes/chunk pruning.
+	var minDate, maxDate time.Time
+	for i, k := range remainingKeys {
+		d, err := time.Parse("2006-01-02", k)
+		if err != nil {
+			continue
+		}
+		if i == 0 || d.Before(minDate) {
+			minDate = d
+		}
+		if i == 0 || d.After(maxDate) {
+			maxDate = d
+		}
 	}
-	query := fmt.Sprintf(
-		"SELECT (send_time AT TIME ZONE 'UTC')::date AS date, COUNT(*) AS cnt FROM messages WHERE chat_id::text = ? AND (send_time AT TIME ZONE 'UTC')::date IN (%s) GROUP BY date",
-		placeholders,
-	)
+	start := time.Date(minDate.Year(), minDate.Month(), minDate.Day(), 0, 0, 0, 0, time.UTC)
+	end := time.Date(maxDate.Year(), maxDate.Month(), maxDate.Day(), 0, 0, 0, 0, time.UTC).Add(24 * time.Hour)
+
+	args = make([]interface{}, 0, 3)
+	if hasTgID {
+		args = append(args, tgID, start, end)
+	} else {
+		args = append(args, groupUUID, start, end)
+	}
+	query := "SELECT (send_time AT TIME ZONE 'UTC')::date AS date, COUNT(*) AS cnt FROM messages WHERE chat_id = ? AND send_time >= ? AND send_time < ? GROUP BY date"
 	rows, err := db.Raw(query, args...).Rows()
 	if err != nil {
 		return err
