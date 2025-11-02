@@ -3,8 +3,8 @@ package main
 import (
 	"fmt"
 	"log"
+	"sort"
 	"strconv"
-	"strings"
 	"sync"
 	"time"
 
@@ -112,6 +112,68 @@ func getDaysPerGroup(db *gorm.DB) (map[string][]string, error) {
 	return days, nil
 }
 
+// dateRange represents an inclusive day range [Start .. End]
+type dateRange struct {
+	Start time.Time
+	End   time.Time
+}
+
+// buildDateRanges receives a list of date strings (either RFC3339 or YYYY-MM-DD)
+// and returns a slice of contiguous date ranges. Each range is inclusive and
+// expressed in UTC at midnight. Non-parseable entries are skipped.
+func buildDateRanges(dates []string) ([]dateRange, error) {
+	if len(dates) == 0 {
+		return nil, nil
+	}
+	seen := make(map[string]struct{})
+	ts := make([]time.Time, 0, len(dates))
+	for _, ds := range dates {
+		var t time.Time
+		var err error
+		t, err = time.Parse("2006-01-02", ds)
+		if err != nil {
+			t, err = time.Parse(time.RFC3339, ds)
+			if err != nil {
+				continue
+			}
+		}
+		key := t.UTC().Format("2006-01-02")
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		// normalize to UTC midnight
+		d, _ := time.Parse("2006-01-02", key)
+		ts = append(ts, d)
+	}
+
+	if len(ts) == 0 {
+		return nil, nil
+	}
+
+	sort.Slice(ts, func(i, j int) bool { return ts[i].Before(ts[j]) })
+
+	var ranges []dateRange
+	start := ts[0]
+	prev := ts[0]
+	for i := 1; i < len(ts); i++ {
+		cur := ts[i]
+		if cur.Sub(prev) == 24*time.Hour {
+			// contiguous
+			prev = cur
+			continue
+		}
+		// gap -> close previous range
+		ranges = append(ranges, dateRange{Start: start, End: prev})
+		start = cur
+		prev = cur
+	}
+	// append final range
+	ranges = append(ranges, dateRange{Start: start, End: prev})
+
+	return ranges, nil
+}
+
 func calculateUserStatsPerGroup(db *gorm.DB, userID string, groupID string, dates []string) error {
 	// parse sender UUID
 	senderUUID, err := uuid.Parse(userID)
@@ -173,29 +235,31 @@ func calculateUserStatsPerGroup(db *gorm.DB, userID string, groupID string, date
 		return nil
 	}
 
-	// Check which of these dates already exist in users_stats; skip existing
-	placeholders := strings.Repeat("?,", len(dateKeys))
-	placeholders = placeholders[:len(placeholders)-1]
-	args := make([]interface{}, 0, 2+len(dateKeys))
-	// use typed UUIDs to allow index usage
-	args = append(args, senderUUID, groupUUID)
-	for _, k := range dateKeys {
-		args = append(args, k)
-	}
-	existQuery := fmt.Sprintf("SELECT date FROM users_stats WHERE sender_id = ? AND group_id = ? AND date IN (%s)", placeholders)
-	existRows, err := db.Raw(existQuery, args...).Rows()
+	// Check which of these dates already exist in users_stats; break the
+	// requested dates into contiguous ranges and query each range. This
+	// keeps the checks small and index-friendly for Timescale/Postgres.
+	existing := make(map[string]struct{})
+	ranges, err := buildDateRanges(dateKeys)
 	if err != nil {
 		return err
 	}
-	defer existRows.Close()
+	for _, r := range ranges {
+		startDate := time.Date(r.Start.Year(), r.Start.Month(), r.Start.Day(), 0, 0, 0, 0, time.UTC)
+		endDate := time.Date(r.End.Year(), r.End.Month(), r.End.Day(), 0, 0, 0, 0, time.UTC)
 
-	existing := make(map[string]struct{})
-	for existRows.Next() {
-		var dt time.Time
-		if err := existRows.Scan(&dt); err != nil {
+		existRows, err := db.Raw("SELECT date FROM users_stats WHERE sender_id = ? AND group_id = ? AND date >= ? AND date <= ?", senderUUID, groupUUID, startDate, endDate).Rows()
+		if err != nil {
 			return err
 		}
-		existing[dt.Format("2006-01-02")] = struct{}{}
+		for existRows.Next() {
+			var dt time.Time
+			if err := existRows.Scan(&dt); err != nil {
+				existRows.Close()
+				return err
+			}
+			existing[dt.Format("2006-01-02")] = struct{}{}
+		}
+		existRows.Close()
 	}
 
 	// Build list of dates that still need calculating
@@ -232,7 +296,7 @@ func calculateUserStatsPerGroup(db *gorm.DB, userID string, groupID string, date
 	start := time.Date(minDate.Year(), minDate.Month(), minDate.Day(), 0, 0, 0, 0, time.UTC)
 	end := start.AddDate(0, 0, int(maxDate.Sub(minDate).Hours()/24)+1)
 
-	args = make([]interface{}, 0, 4)
+	args := make([]interface{}, 0, 4)
 	if hasTgID {
 		args = append(args, senderUUID, tgID, start, end)
 	} else {
@@ -500,29 +564,58 @@ func calculateGroupStatsPerGroup(db *gorm.DB, groupID string, dates []string) er
 		return nil
 	}
 
-	// Check which of these dates already exist in groups_stats; skip existing
-	placeholders := strings.Repeat("?,", len(dateKeys))
-	placeholders = placeholders[:len(placeholders)-1]
-	args := make([]interface{}, 0, 1+len(dateKeys))
-	// compare typed UUID to group_id to allow index usage
-	args = append(args, groupUUID)
-	for _, k := range dateKeys {
-		args = append(args, k)
+	// Check which of these dates already exist in groups_stats; use a range
+	// lookup (date >= min AND date <= max) so Timescale/Postgres can use
+	// indexes/chunk-pruning instead of a huge IN(...) list.
+	var minExist, maxExist time.Time
+	for i, k := range dateKeys {
+		d, err := time.Parse("2006-01-02", k)
+		if err != nil {
+			continue
+		}
+		if i == 0 || d.Before(minExist) {
+			minExist = d
+		}
+		if i == 0 || d.After(maxExist) {
+			maxExist = d
+		}
 	}
-	existQuery := fmt.Sprintf("SELECT date FROM groups_stats WHERE group_id = ? AND date IN (%s)", placeholders)
-	existRows, err := db.Raw(existQuery, args...).Rows()
+	// If parsing failed for all keys, nothing to do.
+	if minExist.IsZero() {
+		return nil
+	}
+
+	startDate := time.Date(minExist.Year(), minExist.Month(), minExist.Day(), 0, 0, 0, 0, time.UTC)
+	endDate := time.Date(maxExist.Year(), maxExist.Month(), maxExist.Day(), 0, 0, 0, 0, time.UTC)
+
+	existRows, err := db.Raw("SELECT date FROM groups_stats WHERE group_id = ? AND date >= ? AND date <= ?", groupUUID, startDate, endDate).Rows()
 	if err != nil {
 		return err
 	}
 	defer existRows.Close()
 
 	existing := make(map[string]struct{})
-	for existRows.Next() {
-		var dt time.Time
-		if err := existRows.Scan(&dt); err != nil {
+	ranges, err := buildDateRanges(dateKeys)
+	if err != nil {
+		return err
+	}
+	for _, r := range ranges {
+		startDate := time.Date(r.Start.Year(), r.Start.Month(), r.Start.Day(), 0, 0, 0, 0, time.UTC)
+		endDate := time.Date(r.End.Year(), r.End.Month(), r.End.Day(), 0, 0, 0, 0, time.UTC)
+
+		existRows, err := db.Raw("SELECT date FROM groups_stats WHERE group_id = ? AND date >= ? AND date <= ?", groupUUID, startDate, endDate).Rows()
+		if err != nil {
 			return err
 		}
-		existing[dt.Format("2006-01-02")] = struct{}{}
+		for existRows.Next() {
+			var dt time.Time
+			if err := existRows.Scan(&dt); err != nil {
+				existRows.Close()
+				return err
+			}
+			existing[dt.Format("2006-01-02")] = struct{}{}
+		}
+		existRows.Close()
 	}
 
 	// Build list of dates that still need calculating
@@ -555,7 +648,7 @@ func calculateGroupStatsPerGroup(db *gorm.DB, groupID string, dates []string) er
 	start := time.Date(minDate.Year(), minDate.Month(), minDate.Day(), 0, 0, 0, 0, time.UTC)
 	end := time.Date(maxDate.Year(), maxDate.Month(), maxDate.Day(), 0, 0, 0, 0, time.UTC).Add(24 * time.Hour)
 
-	args = make([]interface{}, 0, 3)
+	args := make([]interface{}, 0, 3)
 	if hasTgID {
 		args = append(args, tgID, start, end)
 	} else {
