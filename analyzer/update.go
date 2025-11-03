@@ -426,10 +426,6 @@ func update(db *gorm.DB, config *core.Config) {
 
 			if existCount == 0 {
 				log.Printf("User %s Group %s: no existing stats -> backfill %d date(s)", p.UserID, p.GroupID, len(filtered))
-			} else if len(filtered) > 0 {
-				log.Printf("User %s Group %s: existing stats present -> update %d date(s): %v", p.UserID, p.GroupID, len(filtered), filtered)
-			} else {
-				log.Printf("User %s Group %s: existing stats present -> nothing to update", p.UserID, p.GroupID)
 			}
 
 			if len(filtered) == 0 {
@@ -483,8 +479,6 @@ func update(db *gorm.DB, config *core.Config) {
 			log.Printf("Group %s: no existing stats -> backfill %d date(s)", groupID, len(filtered))
 		} else if len(filtered) > 0 {
 			log.Printf("Group %s: existing stats present -> update %d date(s): %v", groupID, len(filtered), filtered)
-		} else {
-			log.Printf("Group %s: existing stats present -> nothing to update", groupID)
 		}
 
 		if len(filtered) == 0 {

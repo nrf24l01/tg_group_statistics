@@ -221,26 +221,25 @@ async def main():
     global db_pool
     db_pool = await asyncpg.create_pool(DATABASE_URL, min_size=1, max_size=5)
 
-    print("Синхронизация истории...")
+    print("Started sync task")
     await client.start()
-    new_messages = await process_history(db_pool)
+    try:
+        new_messages = await process_history(db_pool)
 
-    # If no new messages were processed, exit instead of waiting for new messages.
-    if isinstance(new_messages, int) and new_messages == 0:
-        print("История синхронизирована. Новых сообщений не найдено — завершаемся.")
-        return
+        # If no new messages were processed, exit instead of waiting for new messages.
+        if isinstance(new_messages, int) and new_messages == 0:
+            print("No new messages were found during history sync. Exiting.")
+            return
 
-    print("История синхронизирована. Ожидание новых сообщений...")
-    # Register real-time handler(s) for configured groups
-    if GROUPS:
+        # If there were new messages, finish the session (no realtime listener started here).
+        print("History sync completed. Finishing session.")
+    finally:
         try:
-            client.add_event_handler(new_message_handler, events.NewMessage(chats=tuple(GROUPS)))
-            print(f"Registered real-time handler for groups: {GROUPS}")
+            await client.disconnect()
         except Exception as e:
-            print(f"Warning: failed to register event handlers for groups {GROUPS}: {e}")
-
-    await client.run_until_disconnected()
-
+            print(f"Warning: error while disconnecting client: {e}")
+        if db_pool is not None:
+            await db_pool.close()
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser(description="TG group history sync")
