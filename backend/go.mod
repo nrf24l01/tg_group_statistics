@@ -12,8 +12,6 @@ require (
 	gorm.io/gorm v1.31.0
 )
 
-replace github.com/nrf24l01/tg_group_statistics/analyzer => ../analyzer
-
 require (
 	github.com/gabriel-vasile/mimetype v1.4.10 // indirect
 	github.com/go-playground/locales v0.14.1 // indirect
