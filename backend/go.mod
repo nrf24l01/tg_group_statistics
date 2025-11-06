@@ -8,7 +8,7 @@ require (
 	github.com/joho/godotenv v1.5.1
 	github.com/labstack/echo/v4 v4.13.4
 	github.com/nrf24l01/go-web-utils v1.5.4
-	github.com/nrf24l01/tg_group_statistics/analyzer v0.0.0-00010101000000-000000000000
+	github.com/nrf24l01/tg_group_statistics/analyzer v0.0.0-20251102193020-bcb2cb8d9e46
 	gorm.io/gorm v1.31.0
 )
 

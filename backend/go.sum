@@ -43,6 +43,8 @@ github.com/mattn/go-isatty v0.0.20 h1:xfD0iDuEKnDkl03q4limB+vH+GxLEtL/jb4xVJSWWE
 github.com/mattn/go-isatty v0.0.20/go.mod h1:W+V8PltTTMOvKvAeJH7IuucS94S2C6jfK/D7dTCTo3Y=
 github.com/nrf24l01/go-web-utils v1.5.4 h1:ZvBKmWZtQhlhdztXaLqSC2OnRtpqXKT19G5u/lhIET8=
 github.com/nrf24l01/go-web-utils v1.5.4/go.mod h1:VUQZWEdcFBSne9BE/jmspD/HzMysZLawJ0elXqf0YjU=
+github.com/nrf24l01/tg_group_statistics/analyzer v0.0.0-20251102193020-bcb2cb8d9e46 h1:WMjGbANkcrSCuUUG7Tp2We93hCGDdhfmp1faEjsW6d8=
+github.com/nrf24l01/tg_group_statistics/analyzer v0.0.0-20251102193020-bcb2cb8d9e46/go.mod h1:ge5I5//hRJ6IjHLkw/+HiINUiHiKOJT2XrZKOdb5t3o=
 github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
 github.com/stretchr/objx v0.1.0/go.mod h1:HFkY916IF+rwdDfMAkV7OtwuqBVzrE8GR6GFx+wExME=

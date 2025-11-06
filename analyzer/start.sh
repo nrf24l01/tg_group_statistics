@@ -9,6 +9,6 @@
 # ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
 
 while true; do
-    python3 main.py
+    ./main
     sleep 30
 done
