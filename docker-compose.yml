@@ -77,6 +77,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      backend:
+        condition: service_healthy
   
   parser:
     build:
@@ -93,7 +95,9 @@ services:
     env_file:
       - .env
     volumes:
-      - ./parser/:/app/
+      - ./parser/session.session:/app/session.session
     depends_on:
       postgres:
+        condition: service_healthy
+      backend:
         condition: service_healthy

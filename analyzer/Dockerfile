@@ -18,5 +18,6 @@ RUN apk add --no-cache tzdata curl
 COPY --from=builder /app/main .
 COPY --from=builder /app/start.sh .
 RUN chmod +x ./main
+RUN chmod +x ./start.sh
 
 CMD ["./start.sh"]
