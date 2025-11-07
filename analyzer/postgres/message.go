@@ -16,4 +16,5 @@ type Message struct {
     Sender      User      `gorm:"constraint:OnDelete:CASCADE;foreignKey:SenderID;references:ID"`
     MessageType string    `gorm:"type:text;not null"`
     MessageText *string   `gorm:"type:text"`
+    UsedForStats bool     `gorm:"not null;default:false"`
 }
