@@ -8,6 +8,7 @@ import (
 	"github.com/nrf24l01/go-web-utils/pg_kit"
 	"github.com/nrf24l01/tg_group_statistics/analyzer/core"
 	"github.com/nrf24l01/tg_group_statistics/analyzer/postgres"
+	"github.com/nrf24l01/tg_group_statistics/analyzer/update"
 )
 
 func main() {
@@ -34,5 +35,12 @@ func main() {
     `)
 
 	log.Print("Initialized successfully")
-	update(db, config)
+	handler := update.Handler{
+		DB:     db,
+		Cfg: config,
+	}
+	if err := handler.Update(); err != nil {
+		log.Fatalf("update failed: %v", err)
+	}
+	log.Print("Update completed successfully")
 }
