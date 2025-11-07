@@ -9,11 +9,11 @@ import (
 
 type UserStats struct {
 	pg_kit.BaseModel
-	SenderID  uuid.UUID `gorm:"type:uuid;not null;primaryKey;index:idx_sender_group"`
+	SenderID  uuid.UUID `gorm:"type:uuid;not null;primaryKey;uniqueIndex:idx_sender_group_date"`
 	Sender    User      `gorm:"constraint:OnDelete:CASCADE;foreignKey:SenderID;references:ID"`
-	GroupID   uuid.UUID `gorm:"type:uuid;not null;primaryKey;index:idx_sender_group"`
+	GroupID   uuid.UUID `gorm:"type:uuid;not null;primaryKey;uniqueIndex:idx_sender_group_date"`
 	Group     Group     `gorm:"constraint:OnDelete:CASCADE;foreignKey:GroupID;references:ID"`
-	Date      time.Time `gorm:"not null;index;primaryKey"`
+	Date      time.Time `gorm:"not null;primaryKey;uniqueIndex:idx_sender_group_date"`
 	MsgCount  int64     `gorm:"not null;default:0"`
 }
 

@@ -1,8 +1,11 @@
 package update
 
 import (
+	"fmt"
+	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/nrf24l01/tg_group_statistics/analyzer/postgres"
 	"gorm.io/gorm/clause"
 )
@@ -137,4 +140,80 @@ func (h *Handler) applyGroupStats(group_id int64, groupStats GroupStats) error {
 	}
 
 	return nil
+}
+
+func (h *Handler) markMessagesAsUsed(messageIDs []uuid.UUID) error {
+	if len(messageIDs) == 0 {
+		return nil
+	}
+
+	// For small lists just use batched IN updates.
+	const smallBatch = 5000
+	const insertBatch = 1000
+
+	tx := h.DB.Begin()
+	if tx.Error != nil {
+		return tx.Error
+	}
+
+	// fast path for modest sizes
+	if len(messageIDs) <= smallBatch {
+		for i := 0; i < len(messageIDs); i += smallBatch {
+			end := i + smallBatch
+			if end > len(messageIDs) {
+				end = len(messageIDs)
+			}
+			chunk := messageIDs[i:end]
+
+			if err := tx.Model(&postgres.Message{}).
+				Where("id IN ?", chunk).
+				Update("used_for_stats", true).Error; err != nil {
+				tx.Rollback()
+				return err
+			}
+		}
+		return tx.Commit().Error
+	}
+
+	// For very large lists, create a temp table and bulk insert IDs, then update via JOIN.
+	// Use a short random suffix to avoid name collisions.
+	tmpSuffix := strings.ReplaceAll(uuid.New().String(), "-", "")[:12]
+	tmpTable := "tmp_msg_ids_" + tmpSuffix
+
+	createSQL := fmt.Sprintf("CREATE TEMP TABLE %s (id uuid PRIMARY KEY) ON COMMIT DROP", tmpTable)
+	if err := tx.Exec(createSQL).Error; err != nil {
+		tx.Rollback()
+		return err
+	}
+
+	// Bulk insert into temp table in manageable batches.
+	for i := 0; i < len(messageIDs); i += insertBatch {
+		end := i + insertBatch
+		if end > len(messageIDs) {
+			end = len(messageIDs)
+		}
+		chunk := messageIDs[i:end]
+
+		placeholders := make([]string, 0, len(chunk))
+		args := make([]interface{}, 0, len(chunk))
+		for j, id := range chunk {
+			placeholders = append(placeholders, fmt.Sprintf("($%d)", j+1))
+			args = append(args, id)
+		}
+
+		insertSQL := fmt.Sprintf("INSERT INTO %s (id) VALUES %s ON CONFLICT DO NOTHING", tmpTable, strings.Join(placeholders, ","))
+		if err := tx.Exec(insertSQL, args...).Error; err != nil {
+			tx.Rollback()
+			return err
+		}
+	}
+
+	// Perform single update joining on the temp table.
+	updateSQL := fmt.Sprintf("UPDATE messages SET used_for_stats = true FROM %s t WHERE messages.id = t.id", tmpTable)
+	if err := tx.Exec(updateSQL).Error; err != nil {
+		tx.Rollback()
+		return err
+	}
+
+	return tx.Commit().Error
 }

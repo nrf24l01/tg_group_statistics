@@ -1,5 +1,7 @@
 package update
 
+import "github.com/google/uuid"
+
 func (h *Handler) groupFullUpdate(group_id int64) error {
 	messages, err := h.getAllMessagesPerGroup(group_id, false)
 	if err != nil {
@@ -14,6 +16,8 @@ func (h *Handler) groupFullUpdate(group_id int64) error {
 		return err
 	}
 
+	var used_messages []uuid.UUID
+
 	for _, msg := range messages {
 		sender_id := msg.Sender.TgUserID
 		time := removeTime(msg.SendTime)
@@ -21,6 +25,9 @@ func (h *Handler) groupFullUpdate(group_id int64) error {
 
 		// Update group stats
 		userStat := userStats[sender_id]
+		if userStat.MessagesPerDay == nil {
+			userStat.MessagesPerDay = make(map[string]int)
+		}
 		userStat.MessagesPerDay[dateKey]++
 		userStat.TotalMessages++
 		userStats[sender_id] = userStat
@@ -28,12 +35,17 @@ func (h *Handler) groupFullUpdate(group_id int64) error {
 		// Update overall group stats
 		groupStat.MessagesPerDay[dateKey]++
 		groupStat.TotalMessages++
+
+		used_messages = append(used_messages, msg.ID)
 	}
 	
 	if err := h.applyUsersStats(group_id, userStats); err != nil {
 		return err
 	}
 	if err := h.applyGroupStats(group_id, groupStat); err != nil {
+		return err
+	}
+	if err := h.markMessagesAsUsed(used_messages); err != nil {
 		return err
 	}
 

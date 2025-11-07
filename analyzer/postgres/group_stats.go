@@ -9,9 +9,9 @@ import (
 
 type GroupStats struct {
 	pg_kit.BaseModel
-	GroupID   uuid.UUID `gorm:"type:uuid;not null;primaryKey"`
+	GroupID   uuid.UUID `gorm:"type:uuid;not null;primaryKey;uniqueIndex:idx_group_date"`
 	Group     Group     `gorm:"constraint:OnDelete:CASCADE;foreignKey:GroupID;references:ID"`
-	Date      time.Time `gorm:"not null;index;primaryKey"`
+	Date      time.Time `gorm:"not null;primaryKey;uniqueIndex:idx_group_date"`
 	MsgCount  int64     `gorm:"not null;default:0"`
 }
 
