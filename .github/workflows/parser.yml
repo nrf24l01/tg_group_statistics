@@ -1,0 +1,50 @@
+name: Parser build
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'parser/**'
+      - '.github/workflows/parser.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'parser/**'
+      - '.github/workflows/parser.yml'
+  workflow_dispatch:
+
+env:
+  LONG_IMAGE_TAG: ${{ github.sha }}
+
+
+jobs:
+  build-parser:
+    name: Build parser
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout репозиторий
+        uses: actions/checkout@v4
+
+      - name: Установка короткого хеша
+        run: echo "IMAGE_TAG=$(echo $GITHUB_SHA | cut -c1-7)" >> $GITHUB_ENV
+      
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Логин в GHCR
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u $GITHUB_ACTOR --password-stdin
+
+      - name: Приведение имени репозитория к нижнему регистру
+        run: echo "REPO_NAME=$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
+
+      - name: Сборка и пуш образа parser
+        uses: docker/build-push-action@v5
+        with:
+          context: parser
+          tags: |
+            ghcr.io/${{ env.REPO_NAME }}/parser:latest
+            ghcr.io/${{ env.REPO_NAME }}/parser:${{ env.IMAGE_TAG }}
+          push: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
