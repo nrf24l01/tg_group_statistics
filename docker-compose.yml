@@ -8,6 +8,7 @@ volumes:
 
 services:
   backend:
+    image: ghcr.io/nrf24l01/tg_group_statistics/backend:latest
     build:
       context: backend/
       dockerfile: Dockerfile
@@ -60,6 +61,7 @@ services:
     command: ["postgres", "-c", "listen_addresses=*"]
 
   analyzer:
+    image: ghcr.io/nrf24l01/tg_group_statistics/analyzer:latest
     build:
       context: analyzer/
       dockerfile: Dockerfile
@@ -80,6 +82,7 @@ services:
         condition: service_healthy
   
   parser:
+    image: ghcr.io/nrf24l01/tg_group_statistics/parser:latest
     build:
       context: parser/
       dockerfile: Dockerfile
