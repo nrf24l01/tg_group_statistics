@@ -39,6 +39,15 @@ func main() {
 		DB:     db,
 		Cfg: config,
 	}
+	if os.Getenv("REBUILD_STATS") == "true" {
+		log.Print("REBUILD_STATS=true: rebuilding stats with word counts")
+		if err := handler.RebuildAllStatsWithWordCounts(); err != nil {
+			log.Fatalf("rebuild failed: %v", err)
+		}
+		log.Print("Rebuild completed successfully")
+		return
+	}
+
 	if err := handler.Update(); err != nil {
 		log.Fatalf("update failed: %v", err)
 	}

@@ -95,8 +95,12 @@ func (h *Handler) loadUsersStats(group_id int64) (map[int64]UserStats, error) {
 		if us.MessagesPerDay == nil {
 			us.MessagesPerDay = make(map[string]int)
 		}
+		if us.WordCountsPerDay == nil {
+			us.WordCountsPerDay = make(map[string]map[string]int64)
+		}
 		us.MessagesPerDay[dateKey] += int(stat.MsgCount)
 		us.TotalMessages += int(stat.MsgCount)
+		us.WordCountsPerDay[dateKey] = mergeWordCounts(us.WordCountsPerDay[dateKey], jsonMapToWordCounts(stat.WordCounts))
 
 		result[uid] = us
 	}
@@ -111,7 +115,8 @@ func (h *Handler) loadGroupStats(group_id int64) (GroupStats, error) {
 
 	var statsDB []postgres.GroupStats
 	result := GroupStats{
-		MessagesPerDay: make(map[string]int),
+		MessagesPerDay:   make(map[string]int),
+		WordCountsPerDay: make(map[string]map[string]int64),
 	}
 
 	if err := h.DB.Where("group_id = ?", group.ID).Find(&statsDB).Error; err != nil {
@@ -122,6 +127,7 @@ func (h *Handler) loadGroupStats(group_id int64) (GroupStats, error) {
 		dateKey := removeTime(stat.Date).Format("02-01-2006")
 		result.MessagesPerDay[dateKey] += int(stat.MsgCount)
 		result.TotalMessages += int(stat.MsgCount)
+		result.WordCountsPerDay[dateKey] = mergeWordCounts(result.WordCountsPerDay[dateKey], jsonMapToWordCounts(stat.WordCounts))
 	}
 	return result, nil
 }

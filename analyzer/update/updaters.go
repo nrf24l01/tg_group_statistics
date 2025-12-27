@@ -7,6 +7,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/nrf24l01/tg_group_statistics/analyzer/postgres"
+	"gorm.io/datatypes"
 	"gorm.io/gorm/clause"
 )
 
@@ -65,11 +66,17 @@ func (h *Handler) applyUsersStats(group_id int64, userStats map[int64]UserStats)
 			}
 			d = time.Date(d.Year(), d.Month(), d.Day(), 0, 0, 0, 0, time.UTC)
 
+			wc := datatypes.JSONMap{}
+			if stats.WordCountsPerDay != nil {
+				wc = wordCountsToJSONMap(stats.WordCountsPerDay[dateKey])
+			}
+
 			rows = append(rows, postgres.UserStats{
 				SenderID: u.ID,
 				GroupID:  group.ID,
 				Date:     d,
 				MsgCount: int64(cnt),
+				WordCounts: wc,
 			})
 		}
 	}
@@ -87,7 +94,7 @@ func (h *Handler) applyUsersStats(group_id int64, userStats map[int64]UserStats)
 		chunk := rows[i:end]
 		if err := h.DB.Clauses(clause.OnConflict{
 			Columns:   []clause.Column{{Name: "sender_id"}, {Name: "group_id"}, {Name: "date"}},
-			DoUpdates: clause.AssignmentColumns([]string{"msg_count"}),
+			DoUpdates: clause.AssignmentColumns([]string{"msg_count", "word_counts"}),
 		}).Create(&chunk).Error; err != nil {
 			return err
 		}
@@ -113,10 +120,16 @@ func (h *Handler) applyGroupStats(group_id int64, groupStats GroupStats) error {
 		}
 		d = time.Date(d.Year(), d.Month(), d.Day(), 0, 0, 0, 0, time.UTC)
 
+		wc := datatypes.JSONMap{}
+		if groupStats.WordCountsPerDay != nil {
+			wc = wordCountsToJSONMap(groupStats.WordCountsPerDay[dateKey])
+		}
+
 		rows = append(rows, postgres.GroupStats{
 			GroupID:  group.ID,
 			Date:     d,
 			MsgCount: int64(cnt),
+			WordCounts: wc,
 		})
 	}
 
@@ -133,7 +146,7 @@ func (h *Handler) applyGroupStats(group_id int64, groupStats GroupStats) error {
 		chunk := rows[i:end]
 		if err := h.DB.Clauses(clause.OnConflict{
 			Columns:   []clause.Column{{Name: "group_id"}, {Name: "date"}},
-			DoUpdates: clause.AssignmentColumns([]string{"msg_count"}),
+			DoUpdates: clause.AssignmentColumns([]string{"msg_count", "word_counts"}),
 		}).Create(&chunk).Error; err != nil {
 			return err
 		}
@@ -210,6 +223,78 @@ func (h *Handler) markMessagesAsUsed(messageIDs []uuid.UUID) error {
 
 	// Perform single update joining on the temp table.
 	updateSQL := fmt.Sprintf("UPDATE messages SET used_for_stats = true FROM %s t WHERE messages.id = t.id", tmpTable)
+	if err := tx.Exec(updateSQL).Error; err != nil {
+		tx.Rollback()
+		return err
+	}
+
+	return tx.Commit().Error
+}
+
+func (h *Handler) updateMessagesWordCounts(wordCounts map[uuid.UUID]datatypes.JSONMap) error {
+	if len(wordCounts) == 0 {
+		return nil
+	}
+
+	ids := make([]uuid.UUID, 0, len(wordCounts))
+	for id := range wordCounts {
+		ids = append(ids, id)
+	}
+
+	const smallBatch = 2000
+	const insertBatch = 500
+
+	tx := h.DB.Begin()
+	if tx.Error != nil {
+		return tx.Error
+	}
+
+	// Fast path: per-row batched updates
+	if len(ids) <= smallBatch {
+		for _, id := range ids {
+			wc := wordCounts[id]
+			if err := tx.Model(&postgres.Message{}).
+				Where("id = ?", id).
+				Update("word_counts", wc).Error; err != nil {
+				tx.Rollback()
+				return err
+			}
+		}
+		return tx.Commit().Error
+	}
+
+	// Large path: temp table and single UPDATE via JOIN
+	tmpSuffix := strings.ReplaceAll(uuid.New().String(), "-", "")[:12]
+	tmpTable := "tmp_msg_word_counts_" + tmpSuffix
+
+	createSQL := fmt.Sprintf("CREATE TEMP TABLE %s (id uuid PRIMARY KEY, word_counts jsonb NOT NULL) ON COMMIT DROP", tmpTable)
+	if err := tx.Exec(createSQL).Error; err != nil {
+		tx.Rollback()
+		return err
+	}
+
+	for i := 0; i < len(ids); i += insertBatch {
+		end := i + insertBatch
+		if end > len(ids) {
+			end = len(ids)
+		}
+		chunk := ids[i:end]
+
+		placeholders := make([]string, 0, len(chunk))
+		args := make([]interface{}, 0, len(chunk)*2)
+		for j, id := range chunk {
+			placeholders = append(placeholders, fmt.Sprintf("($%d,$%d)", j*2+1, j*2+2))
+			args = append(args, id, wordCounts[id])
+		}
+
+		insertSQL := fmt.Sprintf("INSERT INTO %s (id, word_counts) VALUES %s ON CONFLICT (id) DO UPDATE SET word_counts = EXCLUDED.word_counts", tmpTable, strings.Join(placeholders, ","))
+		if err := tx.Exec(insertSQL, args...).Error; err != nil {
+			tx.Rollback()
+			return err
+		}
+	}
+
+	updateSQL := fmt.Sprintf("UPDATE messages m SET word_counts = t.word_counts FROM %s t WHERE m.id = t.id", tmpTable)
 	if err := tx.Exec(updateSQL).Error; err != nil {
 		tx.Rollback()
 		return err
