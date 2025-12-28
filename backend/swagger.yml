@@ -1,0 +1,468 @@
+openapi: 3.0.3
+info:
+  title: TG Group Statistics Backend
+  version: 1.0.0
+  description: |
+    OpenAPI-описание для уже реализованных эндпоинтов.
+
+servers:
+  - url: /
+
+tags:
+  - name: Health
+    description: Проверка доступности сервиса
+  - name: Config
+    description: Конфигурация/список разрешённых групп
+  - name: UserMessages
+    description: Метрики по сообщениям пользователей
+  - name: Words
+    description: Метрики по словам в сообщениях
+
+paths:
+  /ping:
+    get:
+      tags: [Health]
+      summary: Health check
+      operationId: ping
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Message'
+              examples:
+                ok:
+                  value:
+                    status: GroupStat backend is ok
+
+  /config/groups:
+    get:
+      tags: [Config]
+      summary: Получить список разрешённых Telegram-групп
+      operationId: getAllowedGroups
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Список групп, которые одновременно (1) есть в БД и (2) разрешены через env `CHAT_ID`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AllowedGroupsResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /metrics/user-messages/per-user-per-day:
+    get:
+      tags: [UserMessages]
+      summary: Сообщения по пользователям по дням
+      operationId: getMessagesPerUserPerDay
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ChatId'
+        - $ref: '#/components/parameters/StartTimestamp'
+        - $ref: '#/components/parameters/EndTimestamp'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessagesPerUserPerDayResponse'
+        '400':
+          $ref: '#/components/responses/BadQuery'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /metrics/user-messages/per-day-user-column:
+    get:
+      tags: [UserMessages]
+      summary: Таблица «день → колонки-пользователи»
+      description: |
+        Возвращает массив строк, где каждая строка — объект вида:
+        - `day`: RFC3339 timestamp (строка)
+        - динамические ключи (имена пользователей/ники/uuid) со значениями количества сообщений (int)
+      operationId: getPerDayUserColumn
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ChatId'
+        - $ref: '#/components/parameters/StartTimestamp'
+        - $ref: '#/components/parameters/EndTimestamp'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PerDayUserColumnResponse'
+              examples:
+                sample:
+                  value:
+                    stats:
+                      - day: '2025-01-01T00:00:00Z'
+                        alice: 10
+                        bob: 2
+                      - day: '2025-01-02T00:00:00Z'
+                        alice: 0
+                        bob: 5
+        '400':
+          $ref: '#/components/responses/BadQuery'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /metrics/user-messages/per-day:
+    get:
+      tags: [UserMessages]
+      summary: Сообщения по дням (итого по группе)
+      operationId: getMessagesPerDay
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ChatId'
+        - $ref: '#/components/parameters/StartTimestamp'
+        - $ref: '#/components/parameters/EndTimestamp'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DayTotalsResponse'
+        '400':
+          $ref: '#/components/responses/BadQuery'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /metrics/user-messages/per-user-total:
+    get:
+      tags: [UserMessages]
+      summary: Сообщения по пользователям (итого за период)
+      operationId: getMessagesPerUserTotal
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ChatId'
+        - $ref: '#/components/parameters/StartTimestamp'
+        - $ref: '#/components/parameters/EndTimestamp'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserTotalsResponse'
+        '400':
+          $ref: '#/components/responses/BadQuery'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /metrics/words/per-user-total:
+    get:
+      tags: [Words]
+      summary: Всего слов по пользователям (итого за период)
+      description: |
+        Сумма всех слов (по word_counts) за период по каждому пользователю.
+        Период агрегируется по дням (как и остальные метрики), границы включительные.
+      operationId: getWordsPerUserTotal
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ChatId'
+        - $ref: '#/components/parameters/StartTimestamp'
+        - $ref: '#/components/parameters/EndTimestamp'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserWordsTotalsResponse'
+        '400':
+          $ref: '#/components/responses/BadQuery'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: opaque
+      description: |
+        Заголовок `Authorization: Bearer <token>`.
+        Токен сравнивается с env `ACCESS_TOKEN_SECRET`.
+
+  parameters:
+    StartTimestamp:
+      name: start
+      in: query
+      required: true
+      schema:
+        type: integer
+        format: int64
+        minimum: 0
+      description: Unix timestamp в миллисекундах (ms).
+      example: 1735689600000
+
+    EndTimestamp:
+      name: end
+      in: query
+      required: true
+      schema:
+        type: integer
+        format: int64
+        minimum: 0
+      description: Unix timestamp в миллисекундах (ms). Должен быть больше `start`.
+      example: 1736294400000
+
+    ChatId:
+      name: chat_id
+      in: query
+      required: true
+      schema:
+        type: integer
+        format: int64
+      description: Telegram chat/group id. Должен входить в allowlist env `CHAT_ID`.
+      example: -1001234567890
+
+  responses:
+    Unauthorized:
+      description: Не авторизован (нет токена или токен неверный)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            missing:
+              value:
+                message: missing authorization header
+                code: 401
+            invalid:
+              value:
+                message: invalid token
+                code: 401
+
+    InternalError:
+      description: Внутренняя ошибка сервера
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            default:
+              value:
+                message: Internal Server Error
+                code: 500
+
+    BadQuery:
+      description: Некорректные query-параметры (например, невозможно распарсить)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/BadQueryResponse'
+          examples:
+            invalid:
+              value:
+                error: Invalid query parameters
+
+    ValidationError:
+      description: Ошибка валидации (required / gtfield / chatid_allowed)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ValidationErrorsResponse'
+          examples:
+            sample:
+              value:
+                errors:
+                  starttimestamp: StartTimestamp is required
+                  endtimestamp: EndTimestamp must be greater than StartTimestamp
+                  chatid: ChatID failed validation for chatid_allowed
+
+  schemas:
+    Message:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+
+    ErrorResponse:
+      type: object
+      required: [message, code]
+      properties:
+        message:
+          type: string
+        code:
+          type: integer
+          format: int32
+
+    BadQueryResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+
+    ValidationErrorsResponse:
+      type: object
+      required: [errors]
+      properties:
+        errors:
+          type: object
+          additionalProperties:
+            type: string
+      description: |
+        Структура, которую возвращает QueryValidationMiddleware.
+        Ключи — lower-case имена полей структуры (`starttimestamp`, `endtimestamp`, `chatid`).
+
+    Group:
+      type: object
+      required: [id, name]
+      properties:
+        id:
+          type: integer
+          format: int64
+        name:
+          type: string
+
+    AllowedGroupsResponse:
+      type: object
+      required: [groups]
+      properties:
+        groups:
+          type: array
+          items:
+            $ref: '#/components/schemas/Group'
+
+    UserStatsPerDay:
+      type: object
+      required: [total_messages, username, name, day]
+      properties:
+        total_messages:
+          type: integer
+          format: int32
+        username:
+          type: string
+        name:
+          type: string
+        day:
+          type: string
+          format: date-time
+
+    MessagesPerUserPerDayResponse:
+      type: object
+      required: [stats]
+      properties:
+        stats:
+          type: array
+          items:
+            $ref: '#/components/schemas/UserStatsPerDay'
+
+    DayTotal:
+      type: object
+      required: [day, total_msg]
+      properties:
+        day:
+          type: string
+          format: date-time
+          description: RFC3339 (UTC, начало дня)
+        total_msg:
+          type: integer
+          format: int32
+
+    DayTotalsResponse:
+      type: object
+      required: [stats]
+      properties:
+        stats:
+          type: array
+          items:
+            $ref: '#/components/schemas/DayTotal'
+
+    UserTotal:
+      type: object
+      required: [user, total_msg]
+      properties:
+        user:
+          type: string
+          description: username/ник/uuid (как сформировал сервер)
+        total_msg:
+          type: integer
+          format: int32
+
+    UserTotalsResponse:
+      type: object
+      required: [stats]
+      properties:
+        stats:
+          type: array
+          items:
+            $ref: '#/components/schemas/UserTotal'
+
+    UserWordsTotal:
+      type: object
+      required: [user, total_words]
+      properties:
+        user:
+          type: string
+          description: username/ник/uuid (как сформировал сервер)
+        total_words:
+          type: integer
+          format: int32
+
+    UserWordsTotalsResponse:
+      type: object
+      required: [stats]
+      properties:
+        stats:
+          type: array
+          items:
+            $ref: '#/components/schemas/UserWordsTotal'
+
+    PerDayUserColumnRow:
+      type: object
+      required: [day]
+      properties:
+        day:
+          type: string
+          format: date-time
+      additionalProperties:
+        type: integer
+        format: int32
+      description: |
+        Объект-строка: фиксированное поле `day` + динамические поля пользователей.
+
+    PerDayUserColumnResponse:
+      type: object
+      required: [stats]
+      properties:
+        stats:
+          type: array
+          items:
+            $ref: '#/components/schemas/PerDayUserColumnRow'
