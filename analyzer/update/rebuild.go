@@ -27,14 +27,6 @@ func (h *Handler) rebuildGroupStatsWithWordCounts(groupID int64) error {
 		return err
 	}
 
-	// Start from scratch for this group to avoid mixing old rows without word_counts.
-	if err := h.DB.Where("group_id = ?", group.ID).Delete(&postgres.UserStats{}).Error; err != nil {
-		return err
-	}
-	if err := h.DB.Where("group_id = ?", group.ID).Delete(&postgres.GroupStats{}).Error; err != nil {
-		return err
-	}
-
 	userStats := make(map[int64]UserStats)
 	groupStats := GroupStats{
 		MessagesPerDay:   make(map[string]int),
