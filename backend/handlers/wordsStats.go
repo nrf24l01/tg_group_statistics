@@ -53,6 +53,8 @@ func (h *Handler) GetWordsPerUserTotal(c echo.Context) error {
 			key = r.Username.String
 		} else if r.Nick.Valid && r.Nick.String != "" {
 			key = r.Nick.String
+		} else {
+			continue
 		}
 		totals[key] += int(r.TotalWords)
 	}
