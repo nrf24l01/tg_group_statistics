@@ -24,7 +24,7 @@ func main() {
 	config := core.BuildConfigFromEnv()
 
 	// Data sources initialization
-	db, err := pg_kit.RegisterPostgres(config.PGConfig, &postgres.Group{}, &postgres.User{}, &postgres.Message{}, &postgres.UserStats{}, &postgres.GroupStats{})
+	db, err := pg_kit.RegisterPostgres(config.PGConfig, true, &postgres.Group{}, &postgres.User{}, &postgres.Message{}, &postgres.UserStats{}, &postgres.GroupStats{})
 	if err != nil {
 		log.Fatalf("failed to connect to postgres: %v", err)
 	}
@@ -39,15 +39,6 @@ func main() {
 		DB:     db,
 		Cfg: config,
 	}
-	if os.Getenv("REBUILD_STATS") == "true" {
-		log.Print("REBUILD_STATS=true: rebuilding stats with word counts")
-		if err := handler.RebuildAllStatsWithWordCounts(); err != nil {
-			log.Fatalf("rebuild failed: %v", err)
-		}
-		log.Print("Rebuild completed successfully")
-		return
-	}
-
 	if err := handler.Update(); err != nil {
 		log.Fatalf("update failed: %v", err)
 	}

@@ -7,13 +7,13 @@ type Date struct {
 }
 
 type UserStats struct {
-	MessagesPerDay   map[string]int              // key: dd-mm-yyyy
+	MessagesPerDay map[string]int  // key: dd-mm-yyyy
+	TotalMessages int
 	WordCountsPerDay map[string]map[string]int64 // key: dd-mm-yyyy -> word -> count
-	TotalMessages    int
 }
 
 type GroupStats struct {
-	MessagesPerDay   map[string]int              // key: dd-mm-yyyy
+	MessagesPerDay map[string]int  // key: dd-mm-yyyy
+	TotalMessages  int
 	WordCountsPerDay map[string]map[string]int64 // key: dd-mm-yyyy -> word -> count
-	TotalMessages    int
 }

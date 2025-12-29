@@ -1,9 +1,6 @@
 package update
 
-import (
-	"github.com/google/uuid"
-	"gorm.io/datatypes"
-)
+import "github.com/google/uuid"
 
 func (h *Handler) groupFullUpdate(group_id int64) error {
 	messages, err := h.getAllMessagesPerGroup(group_id, false)
@@ -20,16 +17,15 @@ func (h *Handler) groupFullUpdate(group_id int64) error {
 	}
 
 	var used_messages []uuid.UUID
-	messageWordCounts := make(map[uuid.UUID]map[string]int64)
 
 	for _, msg := range messages {
 		sender_id := msg.Sender.TgUserID
 		time := removeTime(msg.SendTime)
 		dateKey := time.Format("02-01-2006")
 
-		wc := map[string]int64{}
+		var tokens []string
 		if msg.MessageText != nil {
-			wc = countWords(*msg.MessageText)
+			tokens = tokenizeWords(*msg.MessageText)
 		}
 
 		// Update group stats
@@ -42,32 +38,24 @@ func (h *Handler) groupFullUpdate(group_id int64) error {
 		}
 		userStat.MessagesPerDay[dateKey]++
 		userStat.TotalMessages++
-		userStat.WordCountsPerDay[dateKey] = mergeWordCounts(userStat.WordCountsPerDay[dateKey], wc)
+		if len(tokens) > 0 {
+			day := ensureWordDayMap(userStat.WordCountsPerDay, dateKey)
+			addWordCounts(day, tokens)
+		}
 		userStats[sender_id] = userStat
 	
 		// Update overall group stats
+		groupStat.MessagesPerDay[dateKey]++
+		groupStat.TotalMessages++
 		if groupStat.WordCountsPerDay == nil {
 			groupStat.WordCountsPerDay = make(map[string]map[string]int64)
 		}
-		groupStat.MessagesPerDay[dateKey]++
-		groupStat.TotalMessages++
-		groupStat.WordCountsPerDay[dateKey] = mergeWordCounts(groupStat.WordCountsPerDay[dateKey], wc)
-
-		if len(msg.WordCounts) == 0 {
-			messageWordCounts[msg.ID] = wc
+		if len(tokens) > 0 {
+			day := ensureWordDayMap(groupStat.WordCountsPerDay, dateKey)
+			addWordCounts(day, tokens)
 		}
 
 		used_messages = append(used_messages, msg.ID)
-	}
-
-	if len(messageWordCounts) > 0 {
-		wcUpdates := make(map[uuid.UUID]datatypes.JSONMap, len(messageWordCounts))
-		for id, wc := range messageWordCounts {
-			wcUpdates[id] = wordCountsToJSONMap(wc)
-		}
-		if err := h.updateMessagesWordCounts(wcUpdates); err != nil {
-			return err
-		}
 	}
 	
 	if err := h.applyUsersStats(group_id, userStats); err != nil {

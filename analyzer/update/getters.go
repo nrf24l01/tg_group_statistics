@@ -100,7 +100,14 @@ func (h *Handler) loadUsersStats(group_id int64) (map[int64]UserStats, error) {
 		}
 		us.MessagesPerDay[dateKey] += int(stat.MsgCount)
 		us.TotalMessages += int(stat.MsgCount)
-		us.WordCountsPerDay[dateKey] = mergeWordCounts(us.WordCountsPerDay[dateKey], jsonMapToWordCounts(stat.WordCounts))
+
+		if len(stat.WordCounts) > 0 {
+			day := ensureWordDayMap(us.WordCountsPerDay, dateKey)
+			existing := jsonMapToInt64Counts(stat.WordCounts)
+			for w, c := range existing {
+				day[w] += c
+			}
+		}
 
 		result[uid] = us
 	}
@@ -127,7 +134,13 @@ func (h *Handler) loadGroupStats(group_id int64) (GroupStats, error) {
 		dateKey := removeTime(stat.Date).Format("02-01-2006")
 		result.MessagesPerDay[dateKey] += int(stat.MsgCount)
 		result.TotalMessages += int(stat.MsgCount)
-		result.WordCountsPerDay[dateKey] = mergeWordCounts(result.WordCountsPerDay[dateKey], jsonMapToWordCounts(stat.WordCounts))
+		if len(stat.WordCounts) > 0 {
+			day := ensureWordDayMap(result.WordCountsPerDay, dateKey)
+			existing := jsonMapToInt64Counts(stat.WordCounts)
+			for w, c := range existing {
+				day[w] += c
+			}
+		}
 	}
 	return result, nil
 }
