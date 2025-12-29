@@ -41,6 +41,7 @@ func (h *Handler) GetWordsPerUserTotal(c echo.Context) error {
 		  AND us.date >= ?
 		  AND us.date <= ?
 		GROUP BY u.id, u.username, u.nick
+		HAVING COALESCE(SUM((j.value)::bigint), 0) != 0
 	`
 	if err := h.DB.Raw(query, req.ChatID, startDay, endDay).Scan(&rows).Error; err != nil {
 		return c.JSON(http.StatusInternalServerError, echoKitSchemas.DefaultInternalErrorResponse)
@@ -51,8 +52,6 @@ func (h *Handler) GetWordsPerUserTotal(c echo.Context) error {
 		key := r.SenderID
 		if r.Username.Valid && r.Username.String != "" {
 			key = r.Username.String
-		} else if r.Nick.Valid && r.Nick.String != "" {
-			key = r.Nick.String
 		} else {
 			continue
 		}
