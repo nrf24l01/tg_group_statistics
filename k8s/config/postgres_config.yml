@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: db-config
+  namespace: tg-stats
+data:
+  POSTGRES_HOST: "postgres"
+  POSTGRES_USER: "postgres"
+  POSTGRES_PASSWORD: "helloTiver57/"
+  POSTGRES_DB: "postgres"
+  POSTGRES_PORT: "5432"
+  POSTGRES_SSLMODE: "disable"
+  POSTGRES_TIMEZONE: "Europe/Moscow"

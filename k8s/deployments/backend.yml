@@ -1,0 +1,40 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  namespace: tg-stats
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: backend
+  template:
+    metadata:
+      labels:
+        app: backend
+    spec:
+      containers:
+        - name: backend
+          image: ghcr.io/nrf24l01/tg_group_statistics/backend:latest
+          livenessProbe:
+            httpGet:
+              path: /ping
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+          ports:
+            - containerPort: 8000
+          resources:
+            requests:
+              memory: "16Mi"
+              cpu: "300m"
+            limits:
+              memory: "128Mi"
+              cpu: "2000m"
+          envFrom:
+            - configMapRef:
+              name: db-config
+            - configMapRef:
+              name: backend-config

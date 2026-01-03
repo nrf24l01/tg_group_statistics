@@ -1,0 +1,36 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: analyzer
+  namespace: tg-stats
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: analyzer
+  template:
+    metadata:
+      labels:
+        app: analyzer
+    spec:
+      containers:
+        - name: analyzer
+          image: ghcr.io/nrf24l01/tg_group_statistics/analyzer:latest
+          ports:
+            - containerPort: 8000
+          resources:
+            requests:
+              memory: "16Mi"
+              cpu: "300m"
+            limits:
+              memory: "128Mi"
+              cpu: "2000m"
+          envFrom:
+            - configMapRef:
+              name: db-config
+          env:
+            - name: PRODUCTION_ENV
+              valueFrom:
+                configMapKeyRef:
+                  key: PRODUCTION_ENV
+                  from: backend-config
