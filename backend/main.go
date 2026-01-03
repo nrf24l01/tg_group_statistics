@@ -37,7 +37,7 @@ func main() {
 	}
 
 	// Data sources initialization
-	db, err := pgKit.RegisterPostgres(config.PGConfig)
+	db, err := pgKit.RegisterPostgres(config.PGConfig, true)
 	if err != nil {
 		log.Fatalf("failed to connect to postgres: %v", err)
 	}
