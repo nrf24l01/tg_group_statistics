@@ -25,13 +25,13 @@ services:
       - .env
     environment:
       - APP_HOST=:8000
-      - PG_HOST=postgres
-      - PG_USER=postgres
-      - PG_PASSWORD=password
-      - PG_DATABASE=postgres
-      - PG_PORT=5432
-      - PG_SSLMODE=disable
-      - PG_TIMEZONE=Europe/Moscow
+      - POSTGRES_HOST=postgres
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=password
+      - POSTGRES_DATABASE=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_SSLMODE=disable
+      - POSTGRES_TIMEZONE=Europe/Moscow
       - PRODUCTION_ENV=true
       - NO_LOGS=true
     depends_on:
@@ -66,13 +66,13 @@ services:
       context: analyzer/
       dockerfile: Dockerfile
     environment:
-      - PG_HOST=postgres
-      - PG_USER=postgres
-      - PG_PASSWORD=password
-      - PG_DATABASE=postgres
-      - PG_PORT=5432
-      - PG_SSLMODE=disable
-      - PG_TIMEZONE=Europe/Moscow
+      - POSTGRES_HOST=postgres
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=password
+      - POSTGRES_DATABASE=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_SSLMODE=disable
+      - POSTGRES_TIMEZONE=Europe/Moscow
       - PRODUCTION_ENV=true
     networks:
       - tg-group-statistics-net
