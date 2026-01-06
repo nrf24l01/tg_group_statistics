@@ -5,6 +5,8 @@ metadata:
   namespace: tg-stats
 spec:
   replicas: 1
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       app: parser
@@ -16,6 +18,7 @@ spec:
       containers:
         - name: parser
           image: ghcr.io/nrf24l01/tg_group_statistics/parser:latest
+          imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8000
           resources:
@@ -27,6 +30,32 @@ spec:
               cpu: "500m"
           envFrom:
             - configMapRef:
-              name: db-config
-            - configMapRef:
-              name: backend-config
+                name: db-config
+          env:
+            - name: GROUPS
+              valueFrom:
+                secretKeyRef:
+                  key: CHAT_ID
+                  name: env-secret
+            - name: API_ID
+              valueFrom:
+                secretKeyRef:
+                  key: API_ID
+                  name: env-secret
+            - name: API_HASH
+              valueFrom:
+                secretKeyRef:
+                  key: API_HASH
+                  name: env-secret
+            - name: SESSION_NAME
+              valueFrom:
+                secretKeyRef:
+                  key: SESSION_NAME
+                  name: env-secret
+          volumeMounts:
+            - name: teleton-session
+              mountPath: /data
+      volumes:
+        - name: teleton-session
+          persistentVolumeClaim:
+            claimName: teleton-session

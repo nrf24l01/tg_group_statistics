@@ -16,21 +16,22 @@ spec:
       containers:
         - name: analyzer
           image: ghcr.io/nrf24l01/tg_group_statistics/analyzer:latest
+          imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8000
           resources:
             requests:
-              memory: "16Mi"
-              cpu: "300m"
+              memory: "32Mi"
+              cpu: "500m"
             limits:
-              memory: "128Mi"
+              memory: "512Mi"
               cpu: "2000m"
           envFrom:
             - configMapRef:
-              name: db-config
+                name: db-config
           env:
             - name: PRODUCTION_ENV
               valueFrom:
                 configMapKeyRef:
                   key: PRODUCTION_ENV
-                  from: backend-config
+                  name: backend-config

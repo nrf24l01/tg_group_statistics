@@ -16,6 +16,7 @@ spec:
       containers:
         - name: backend
           image: ghcr.io/nrf24l01/tg_group_statistics/backend:latest
+          imagePullPolicy: IfNotPresent
           livenessProbe:
             httpGet:
               path: /ping
@@ -35,6 +36,22 @@ spec:
               cpu: "2000m"
           envFrom:
             - configMapRef:
-              name: db-config
+                name: db-config
             - configMapRef:
-              name: backend-config
+                name: backend-config
+          env:
+            - name: ALLOW_ORIGIN
+              valueFrom:
+                secretKeyRef:
+                  key: ALLOW_ORIGIN
+                  name: env-secret
+            - name: ACCESS_TOKEN_SECRET
+              valueFrom:
+                secretKeyRef:
+                  key: ACCESS_TOKEN_SECRET
+                  name: env-secret
+            - name: CHAT_ID
+              valueFrom:
+                secretKeyRef:
+                  key: CHAT_ID
+                  name: env-secret

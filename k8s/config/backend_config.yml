@@ -1,7 +1,7 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: db-config
+  name: backend-config
   namespace: tg-stats
 data:
   APP_HOST: ":8000"
