@@ -54,8 +54,8 @@ github.com/mattn/go-sqlite3 v1.14.22 h1:2gZY6PC6kBnID23Tichd1K+Z0oS6nE/XwU+Vz/5o
 github.com/mattn/go-sqlite3 v1.14.22/go.mod h1:Uh1q+B4BYcTPb+yiD3kU8Ct7aC0hY9fxUwlHK0RXw+Y=
 github.com/microsoft/go-mssqldb v1.7.2 h1:CHkFJiObW7ItKTJfHo1QX7QBBD1iV+mn1eOyRP3b/PA=
 github.com/microsoft/go-mssqldb v1.7.2/go.mod h1:kOvZKUdrhhFQmxLZqbwUV0rHkNkZpthMITIb2Ko1IoA=
-github.com/nrf24l01/go-web-utils v1.10.0 h1:ID9/6CFDCmpglmN9sTPTJYnEaUZVOxhKvL0MNovicwQ=
-github.com/nrf24l01/go-web-utils v1.10.0/go.mod h1:VUQZWEdcFBSne9BE/jmspD/HzMysZLawJ0elXqf0YjU=
+github.com/nrf24l01/go-web-utils v1.10.1 h1:QwcXA1xVFMeB4N10uAtLJT2ZqaAC0BV0+ef0mdPQ1CQ=
+github.com/nrf24l01/go-web-utils v1.10.1/go.mod h1:VUQZWEdcFBSne9BE/jmspD/HzMysZLawJ0elXqf0YjU=
 github.com/nrf24l01/tg_group_statistics/analyzer v0.0.0-20260103113444-024fd3c15c78 h1:QObZFmBVaQF7PbL+OolsZ49iY6cXrFKm2D69n+ED4/0=
 github.com/nrf24l01/tg_group_statistics/analyzer v0.0.0-20260103113444-024fd3c15c78/go.mod h1:cRvRbGgkjN8dCw1kTXmJX1RR8EN9SBDXDSP4yhGkrsQ=
 github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=
