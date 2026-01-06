@@ -219,7 +219,14 @@ async def new_message_handler(event):
 
 async def main():
     global db_pool
-    db_pool = await asyncpg.create_pool(DATABASE_URL, min_size=1, max_size=5)
+    db_pool = await asyncpg.create_pool(
+        user=POSTGRES_USER,
+        password=POSTGRES_PASSWORD,
+        database=POSTGRES_DB,
+        host=POSTGRES_HOST,
+        port=POSTGRES_PORT, 
+        min_size=1, max_size=5
+    )
 
     print("Started sync task")
     await client.start()
