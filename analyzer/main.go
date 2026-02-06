@@ -39,8 +39,10 @@ func main() {
 		DB:     db,
 		Cfg: config,
 	}
-	if err := handler.Update(); err != nil {
-		log.Fatalf("update failed: %v", err)
+	for {
+		if err := handler.Update(); err != nil {
+			log.Fatalf("update failed: %v", err)
+		}
+		log.Print("Update completed")
 	}
-	log.Print("Update completed successfully")
 }
