@@ -1,12 +1,11 @@
 apiVersion: apps/v1
-kind: Deployment
+kind: StatefulSet
 metadata:
   name: postgres
   namespace: tg-stats
 spec:
+  serviceName: postgres-headless
   replicas: 1
-  strategy:
-    type: Recreate
   selector:
     matchLabels:
       app: postgres
@@ -55,6 +54,7 @@ spec:
           volumeMounts:
             - name: postgres-data
               mountPath: /var/lib/postgresql/data
+              subPath: pgdata
           resources:
             requests:
               memory: "256Mi"
@@ -62,7 +62,11 @@ spec:
             limits:
               memory: "1Gi"
               cpu: "2000m"
-      volumes:
-        - name: postgres-data
-          persistentVolumeClaim:
-            claimName: postgres-data
+  volumeClaimTemplates:
+    - metadata:
+        name: postgres-data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 10Gi
