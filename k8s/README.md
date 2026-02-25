@@ -6,5 +6,6 @@ kubectl apply -f config/
 kubectl apply -f pvc/
 kubectl apply -f service/
 kubectl apply -f deployments/
+kubectl apply -f node-port/
 kubectl -n tg-stats cp ./session.session parser-<YOUR POD ID>:/data/
 ```
