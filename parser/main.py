@@ -8,8 +8,7 @@ from telethon import TelegramClient, events
 from config import *
 from sql_queries import *
 
-
-client = TelegramClient(SESSION_NAME, API_ID, API_HASH)
+client = None
 
 user_cache: dict[int, uuid.UUID] = {}
 db_pool: asyncpg.Pool | None = None
@@ -229,6 +228,9 @@ async def main():
     )
 
     print("Started sync task")
+    global client
+    if client is None:
+        client = TelegramClient(SESSION_NAME, API_ID, API_HASH)
     await client.start()
     try:
         new_messages = await process_history(db_pool)
