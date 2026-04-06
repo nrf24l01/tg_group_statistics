@@ -31,6 +31,8 @@ spec:
           envFrom:
             - configMapRef:
                 name: db-config
+            - configMapRef:
+                name: proxy-config
           env:
             - name: GROUPS
               valueFrom:

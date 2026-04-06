@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: proxy-config
+  namespace: tg-stats
+data:
+  SOCKS5_PROXY_HOST: ""
+  SOCKS5_PROXY_PORT: "0"
+  SOCKS5_PROXY_USERNAME: ""
+  SOCKS5_PROXY_PASSWORD: ""
