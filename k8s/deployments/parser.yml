@@ -31,8 +31,9 @@ spec:
           envFrom:
             - configMapRef:
                 name: db-config
-            - configMapRef:
-                name: proxy-config
+            - secretRef:
+                name: proxy-secret
+                optional: true
           env:
             - name: GROUPS
               valueFrom:

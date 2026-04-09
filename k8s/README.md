@@ -2,6 +2,7 @@
 ```shell
 kubectl apply -f namespace/
 kubectl -n tg-stats create secret generic env-secret --from-env-file=./.env
+kubectl -n tg-stats create secret generic proxy-secret --from-env-file=./.env.proxy
 kubectl apply -f config/
 kubectl apply -f pvc/
 kubectl apply -f service/
