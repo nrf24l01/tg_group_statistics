@@ -3,6 +3,7 @@ package main
 import (
 	"log"
 	"os"
+	"time"
 
 	"github.com/joho/godotenv"
 	"github.com/nrf24l01/go-web-utils/pg_kit"
@@ -19,7 +20,7 @@ func main() {
 			log.Fatalf("failed to load .env: %v", err)
 		}
 	}
-	
+
 	// Configuration initialization
 	config := core.BuildConfigFromEnv()
 
@@ -36,7 +37,7 @@ func main() {
 
 	log.Print("Initialized successfully")
 	handler := update.Handler{
-		DB:     db,
+		DB:  db,
 		Cfg: config,
 	}
 	for {
@@ -44,5 +45,6 @@ func main() {
 			log.Fatalf("update failed: %v", err)
 		}
 		log.Print("Update completed")
+		time.Sleep(1 * time.Minute)
 	}
 }
