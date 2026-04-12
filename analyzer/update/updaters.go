@@ -104,10 +104,10 @@ func (h *Handler) applyUsersStats(group_id int64, userStats map[int64]UserStats)
 			Columns: []clause.Column{{Name: "sender_id"}, {Name: "group_id"}, {Name: "date"}},
 			DoUpdates: clause.Assignments(map[string]interface{}{
 				"msg_count":   gorm.Expr("EXCLUDED.msg_count"),
-				"word_counts": gorm.Expr("CASE WHEN word_counts IS DISTINCT FROM EXCLUDED.word_counts THEN EXCLUDED.word_counts ELSE word_counts END"),
+				"word_counts": gorm.Expr("CASE WHEN users_stats.word_counts IS DISTINCT FROM EXCLUDED.word_counts THEN EXCLUDED.word_counts ELSE users_stats.word_counts END"),
 			}),
 			Where: clause.Where{Exprs: []clause.Expression{
-				clause.Expr{SQL: "msg_count IS DISTINCT FROM EXCLUDED.msg_count OR word_counts IS DISTINCT FROM EXCLUDED.word_counts"},
+				clause.Expr{SQL: "users_stats.msg_count IS DISTINCT FROM EXCLUDED.msg_count OR users_stats.word_counts IS DISTINCT FROM EXCLUDED.word_counts"},
 			}},
 		}).Create(&chunk)
 		if res.Error != nil {
@@ -172,10 +172,10 @@ func (h *Handler) applyGroupStats(group_id int64, groupStats GroupStats) error {
 			Columns: []clause.Column{{Name: "group_id"}, {Name: "date"}},
 			DoUpdates: clause.Assignments(map[string]interface{}{
 				"msg_count":   gorm.Expr("EXCLUDED.msg_count"),
-				"word_counts": gorm.Expr("CASE WHEN word_counts IS DISTINCT FROM EXCLUDED.word_counts THEN EXCLUDED.word_counts ELSE word_counts END"),
+				"word_counts": gorm.Expr("CASE WHEN groups_stats.word_counts IS DISTINCT FROM EXCLUDED.word_counts THEN EXCLUDED.word_counts ELSE groups_stats.word_counts END"),
 			}),
 			Where: clause.Where{Exprs: []clause.Expression{
-				clause.Expr{SQL: "msg_count IS DISTINCT FROM EXCLUDED.msg_count OR word_counts IS DISTINCT FROM EXCLUDED.word_counts"},
+				clause.Expr{SQL: "groups_stats.msg_count IS DISTINCT FROM EXCLUDED.msg_count OR groups_stats.word_counts IS DISTINCT FROM EXCLUDED.word_counts"},
 			}},
 		}).Create(&chunk)
 		if res.Error != nil {
