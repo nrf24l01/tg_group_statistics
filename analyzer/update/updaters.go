@@ -2,12 +2,14 @@ package update
 
 import (
 	"fmt"
+	"log"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/nrf24l01/tg_group_statistics/analyzer/postgres"
 	"gorm.io/datatypes"
+	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
 
@@ -77,10 +79,10 @@ func (h *Handler) applyUsersStats(group_id int64, userStats map[int64]UserStats)
 			}
 
 			rows = append(rows, postgres.UserStats{
-				SenderID: u.ID,
-				GroupID:  group.ID,
-				Date:     d,
-				MsgCount: int64(cnt),
+				SenderID:   u.ID,
+				GroupID:    group.ID,
+				Date:       d,
+				MsgCount:   int64(cnt),
 				WordCounts: wc,
 			})
 		}
@@ -90,20 +92,31 @@ func (h *Handler) applyUsersStats(group_id int64, userStats map[int64]UserStats)
 		return nil
 	}
 
- 	const chunkSize = 500
+	const chunkSize = 500
+	var changedRows int64
 	for i := 0; i < len(rows); i += chunkSize {
 		end := i + chunkSize
 		if end > len(rows) {
 			end = len(rows)
 		}
 		chunk := rows[i:end]
-		if err := h.DB.Clauses(clause.OnConflict{
-			Columns:   []clause.Column{{Name: "sender_id"}, {Name: "group_id"}, {Name: "date"}},
-			DoUpdates: clause.AssignmentColumns([]string{"msg_count", "word_counts"}),
-		}).Create(&chunk).Error; err != nil {
-			return err
+		res := h.DB.Clauses(clause.OnConflict{
+			Columns: []clause.Column{{Name: "sender_id"}, {Name: "group_id"}, {Name: "date"}},
+			DoUpdates: clause.Assignments(map[string]interface{}{
+				"msg_count":   gorm.Expr("EXCLUDED.msg_count"),
+				"word_counts": gorm.Expr("CASE WHEN word_counts IS DISTINCT FROM EXCLUDED.word_counts THEN EXCLUDED.word_counts ELSE word_counts END"),
+			}),
+			Where: clause.Where{Exprs: []clause.Expression{
+				clause.Expr{SQL: "msg_count IS DISTINCT FROM EXCLUDED.msg_count OR word_counts IS DISTINCT FROM EXCLUDED.word_counts"},
+			}},
+		}).Create(&chunk)
+		if res.Error != nil {
+			return res.Error
 		}
+		changedRows += res.RowsAffected
 	}
+
+	log.Printf("users_stats upsert metrics: group_id=%d rows_total=%d rows_changed=%d rows_unchanged=%d", group_id, len(rows), changedRows, int64(len(rows))-changedRows)
 
 	return nil
 }
@@ -136,9 +149,9 @@ func (h *Handler) applyGroupStats(group_id int64, groupStats GroupStats) error {
 		}
 
 		rows = append(rows, postgres.GroupStats{
-			GroupID:  group.ID,
-			Date:     d,
-			MsgCount: int64(cnt),
+			GroupID:    group.ID,
+			Date:       d,
+			MsgCount:   int64(cnt),
 			WordCounts: wc,
 		})
 	}
@@ -148,19 +161,30 @@ func (h *Handler) applyGroupStats(group_id int64, groupStats GroupStats) error {
 	}
 
 	const chunkSize = 500
+	var changedRows int64
 	for i := 0; i < len(rows); i += chunkSize {
 		end := i + chunkSize
 		if end > len(rows) {
 			end = len(rows)
 		}
 		chunk := rows[i:end]
-		if err := h.DB.Clauses(clause.OnConflict{
-			Columns:   []clause.Column{{Name: "group_id"}, {Name: "date"}},
-			DoUpdates: clause.AssignmentColumns([]string{"msg_count", "word_counts"}),
-		}).Create(&chunk).Error; err != nil {
-			return err
+		res := h.DB.Clauses(clause.OnConflict{
+			Columns: []clause.Column{{Name: "group_id"}, {Name: "date"}},
+			DoUpdates: clause.Assignments(map[string]interface{}{
+				"msg_count":   gorm.Expr("EXCLUDED.msg_count"),
+				"word_counts": gorm.Expr("CASE WHEN word_counts IS DISTINCT FROM EXCLUDED.word_counts THEN EXCLUDED.word_counts ELSE word_counts END"),
+			}),
+			Where: clause.Where{Exprs: []clause.Expression{
+				clause.Expr{SQL: "msg_count IS DISTINCT FROM EXCLUDED.msg_count OR word_counts IS DISTINCT FROM EXCLUDED.word_counts"},
+			}},
+		}).Create(&chunk)
+		if res.Error != nil {
+			return res.Error
 		}
+		changedRows += res.RowsAffected
 	}
+
+	log.Printf("group_stats upsert metrics: group_id=%d rows_total=%d rows_changed=%d rows_unchanged=%d", group_id, len(rows), changedRows, int64(len(rows))-changedRows)
 
 	return nil
 }
@@ -181,6 +205,7 @@ func (h *Handler) markMessagesAsUsed(messageIDs []uuid.UUID) error {
 
 	// fast path for modest sizes
 	if len(messageIDs) <= smallBatch {
+		var changedRows int64
 		for i := 0; i < len(messageIDs); i += smallBatch {
 			end := i + smallBatch
 			if end > len(messageIDs) {
@@ -188,14 +213,22 @@ func (h *Handler) markMessagesAsUsed(messageIDs []uuid.UUID) error {
 			}
 			chunk := messageIDs[i:end]
 
-			if err := tx.Model(&postgres.Message{}).
+			res := tx.Model(&postgres.Message{}).
 				Where("id IN ?", chunk).
-				Update("used_for_stats", true).Error; err != nil {
+				Where("used_for_stats IS DISTINCT FROM ?", true).
+				Update("used_for_stats", true)
+			if res.Error != nil {
 				tx.Rollback()
-				return err
+				return res.Error
 			}
+			changedRows += res.RowsAffected
 		}
-		return tx.Commit().Error
+		if err := tx.Commit().Error; err != nil {
+			return err
+		}
+
+		log.Printf("messages used_for_stats metrics: ids_total=%d rows_changed=%d rows_unchanged=%d", len(messageIDs), changedRows, int64(len(messageIDs))-changedRows)
+		return nil
 	}
 
 	// For very large lists, create a temp table and bulk insert IDs, then update via JOIN.
@@ -232,11 +265,17 @@ func (h *Handler) markMessagesAsUsed(messageIDs []uuid.UUID) error {
 	}
 
 	// Perform single update joining on the temp table.
-	updateSQL := fmt.Sprintf("UPDATE messages SET used_for_stats = true FROM %s t WHERE messages.id = t.id", tmpTable)
-	if err := tx.Exec(updateSQL).Error; err != nil {
+	updateSQL := fmt.Sprintf("UPDATE messages SET used_for_stats = true FROM %s t WHERE messages.id = t.id AND messages.used_for_stats IS DISTINCT FROM true", tmpTable)
+	res := tx.Exec(updateSQL)
+	if res.Error != nil {
 		tx.Rollback()
+		return res.Error
+	}
+
+	if err := tx.Commit().Error; err != nil {
 		return err
 	}
 
-	return tx.Commit().Error
+	log.Printf("messages used_for_stats metrics: ids_total=%d rows_changed=%d rows_unchanged=%d", len(messageIDs), res.RowsAffected, int64(len(messageIDs))-res.RowsAffected)
+	return nil
 }
